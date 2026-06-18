@@ -23,16 +23,25 @@ try
     // --- argument parsing -------------------------------------------------
     string Arg(string name) => args.SkipWhile(a => a != name).Skip(1).Take(1).FirstOrDefault() ?? string.Empty;
 
+    // credentials: command-line argument takes precedence, otherwise fall back to the
+    // environment variable so secrets can be kept out of the win_acme command line.
+    string Secret(string argName, string envName)
+    {
+        var fromArg = Arg(argName);
+        return !string.IsNullOrEmpty(fromArg) ? fromArg : (Environment.GetEnvironmentVariable(envName) ?? string.Empty);
+    }
+
     var mode = Arg("-mode").Trim().ToLowerInvariant();
-    var mail = Arg("-mail");
-    var password = Arg("-pw");
-    var tfa = Arg("-tfa");
+    var mail = Secret("-mail", "UD_MAIL");
+    var password = Secret("-pw", "UD_PASSWORD");
+    var tfa = Secret("-tfa", "UD_TFA");
     var record = Arg("-record").Trim().Trim('.').ToLowerInvariant();
     var value = Arg("-value");
 
     if (mode is not ("create" or "delete") || string.IsNullOrEmpty(mail) || string.IsNullOrEmpty(password) || string.IsNullOrEmpty(record))
         throw new ArgumentException(
-            "Usage: -mode <create|delete> -mail <mail> -pw <password> -record <_acme-challenge.example.com> [-value <txt-value>] [-tfa <secret>]");
+            "Usage: -mode <create|delete> [-mail <mail>] [-pw <password>] -record <_acme-challenge.example.com> [-value <txt-value>] [-tfa <secret>]\n" +
+            "  mail/password/2FA may also be supplied via the UD_MAIL, UD_PASSWORD and UD_TFA environment variables.");
 
     if (mode == "create" && string.IsNullOrEmpty(value))
         throw new ArgumentException("-value is required when -mode create");

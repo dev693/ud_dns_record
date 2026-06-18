@@ -21,11 +21,28 @@ ud_dns_record.exe -mode delete -mail <mail> -pw <password> [-tfa <secret>] -reco
 | Argument  | Required            | Description                                                              |
 |-----------|---------------------|--------------------------------------------------------------------------|
 | `-mode`   | yes                 | `create` or `delete`.                                                     |
-| `-mail`   | yes                 | united-domains account e-mail.                                           |
-| `-pw`     | yes                 | united-domains account password.                                        |
+| `-mail`   | yes\*               | united-domains account e-mail.                                          |
+| `-pw`     | yes\*               | united-domains account password.                                       |
 | `-record` | yes                 | Full TXT record name, e.g. `_acme-challenge.example.com`.               |
 | `-value`  | yes for `create`    | TXT content (the ACME token). For `delete` it narrows which record goes. |
 | `-tfa`    | only with 2FA       | TOTP secret (base32) if the account has two-factor authentication.      |
+
+\* `-mail`, `-pw` and `-tfa` are optional on the command line if the corresponding
+**environment variable** is set instead (see below).
+
+### Environment variables
+
+To keep credentials out of the command line (and out of the win-acme renewal store), the
+account credentials can be supplied via environment variables instead of `-mail`/`-pw`/`-tfa`:
+
+| Variable      | Replaces | Description                                |
+|---------------|----------|--------------------------------------------|
+| `UD_MAIL`     | `-mail`  | united-domains account e-mail.            |
+| `UD_PASSWORD` | `-pw`    | united-domains account password.          |
+| `UD_TFA`      | `-tfa`   | TOTP secret (base32), only if 2FA is on.  |
+
+A command-line argument always takes precedence over the matching environment variable.
+With the variables set, the win-acme arguments reduce to just `-mode`, `-record` and `-value`.
 
 Exit code is `0` on success and non-zero on failure, so win-acme can react to the result.
 Both `create` and `delete` are idempotent (creating an existing record or deleting a missing
@@ -34,28 +51,34 @@ one is a no-op that still returns `0`).
 ## win-acme configuration
 
 Use the **`script` DNS validation plugin** and point both the create and delete script at
-this executable. Example arguments (win-acme substitutes `{RecordName}` and `{Token}`):
+this executable. Set `UD_MAIL`, `UD_PASSWORD` (and `UD_TFA` if the account uses 2FA) as
+environment variables for the win-acme process so credentials stay out of the renewal
+configuration. The script arguments then only carry the operation and the values win-acme
+substitutes (`{RecordName}` and `{Token}`):
 
 - **Create script:** `ud_dns_record.exe`
-  Arguments: `-mode create -mail you@example.com -pw secret -tfa BASE32SECRET -record {RecordName} -value {Token}`
+  Arguments: `-mode create -record {RecordName} -value {Token}`
 - **Delete script:** `ud_dns_record.exe`
-  Arguments: `-mode delete -mail you@example.com -pw secret -tfa BASE32SECRET -record {RecordName} -value {Token}`
+  Arguments: `-mode delete -record {RecordName} -value {Token}`
 
-Unattended one-liner:
+Unattended one-liner (with `UD_MAIL`/`UD_PASSWORD`/`UD_TFA` set in the environment):
 
 ```
 wacs.exe --target manual --host example.com,*.example.com ^
   --validationmode dns-01 --validation script ^
   --dnscreatescript "C:\path\ud_dns_record.exe" ^
-  --dnscreatescriptarguments "-mode create -mail you@example.com -pw secret -tfa BASE32SECRET -record {RecordName} -value {Token}" ^
+  --dnscreatescriptarguments "-mode create -record {RecordName} -value {Token}" ^
   --dnsdeletescript "C:\path\ud_dns_record.exe" ^
-  --dnsdeletescriptarguments "-mode delete -mail you@example.com -pw secret -tfa BASE32SECRET -record {RecordName} -value {Token}"
+  --dnsdeletescriptarguments "-mode delete -record {RecordName} -value {Token}"
 ```
 
-> **Security note:** credentials are passed on the command line and are therefore stored in
-> the win-acme renewal configuration and may appear in process listings. Use a dedicated
-> united-domains account with the least privileges necessary, and protect the win-acme
-> `settings`/renewal store accordingly.
+If you prefer, you can still pass `-mail`/`-pw`/`-tfa` directly as script arguments instead of
+using the environment variables.
+
+> **Security note:** prefer the environment variables — credentials passed as script arguments
+> are stored in the win-acme renewal configuration and may appear in process listings. Either
+> way, use a dedicated united-domains account with the least privileges necessary and protect
+> the win-acme `settings`/renewal store accordingly.
 
 ## Build
 
