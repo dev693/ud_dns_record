@@ -1,5 +1,4 @@
 using Google.Authenticator;
-using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Serilog;
 using System.Net;
@@ -151,6 +150,16 @@ try
         .Where(e => string.IsNullOrEmpty(value) || string.Equals(e["content"]?.ToString()?.Trim(), value.Trim(), StringComparison.Ordinal))
         .ToList();
 
+    // domain_lock_state block sent unchanged with every record write
+    JObject DomainLockState() => new()
+    {
+        ["domain_locked"] = false,
+        ["email_locked"] = false,
+        ["web_locked"] = false,
+        ["dns_locked"] = false,
+        ["dns_locked_by_own_ns"] = false,
+    };
+
     if (mode == "create")
     {
         // already present with the same value -> nothing to do (idempotent)
@@ -160,36 +169,26 @@ try
             return 0;
         }
 
-        var payload = new Dictionary<string, object?>()
+        // shape mirrors the united-domains web UI "add record" call: PUT the records collection
+        // with a new record (id null, formId placeholder, empty filter_value, value in `text`).
+        var payload = new JObject
         {
-            ["record"] = new Dictionary<string, object?>()
+            ["record"] = new JObject
             {
-                ["address"] = value,
-                ["content"] = value,
-                ["domain"] = registered_domain,
-                ["filter_value"] = record,
-                ["formId"] = "new",
                 ["id"] = null,
-                ["ssl"] = false,
-                ["standard_value"] = false,
-                ["sub_domain"] = sub_domain,
-                ["ttl"] = 60,
                 ["type"] = "TXT",
-                ["udag_record_type"] = "TXT",
-                ["webspace"] = false,
+                ["sub_domain"] = sub_domain,
+                ["domain"] = registered_domain,
+                ["ttl"] = 600,
+                ["filter_value"] = "",
+                ["standard_value"] = false,
+                ["text"] = value,
+                ["formId"] = "TXT0",
             },
-            ["domain_lock_state"] = new Dictionary<string, object>()
-            {
-                ["domain_locked"] = false,
-                ["email_locked"] = false,
-                ["web_locked"] = false,
-            },
+            ["domain_lock_state"] = DomainLockState(),
         };
 
-        var json = JsonConvert.SerializeObject(payload);
-        // NOTE: create endpoint/verb modelled on the existing A-record update (POST to the records
-        // collection with a record that has no id). Confirm against live traffic if this fails.
-        var create = await client.PostAsync(records_url, new StringContent(json, Encoding.UTF8, "application/json"));
+        var create = await client.PutAsync(records_url, new StringContent(payload.ToString(), Encoding.UTF8, "application/json"));
         if (!create.IsSuccessStatusCode)
         {
             var body = await create.Content.ReadAsStringAsync();
@@ -209,8 +208,18 @@ try
 
         foreach (var rec in existing)
         {
-            var record_id = rec["id"]!.ToString();
-            var delete = await client.DeleteAsync($"{records_url}/{record_id}");
+            var record_id = rec["id"];
+            // the web UI removes a record by PUTting it (with formId == id) to .../records/remove
+            var record_obj = (JObject)rec.DeepClone();
+            record_obj["formId"] = record_id;
+
+            var payload = new JObject
+            {
+                ["record"] = record_obj,
+                ["domain_lock_state"] = DomainLockState(),
+            };
+
+            var delete = await client.PutAsync($"{records_url}/remove", new StringContent(payload.ToString(), Encoding.UTF8, "application/json"));
             if (!delete.IsSuccessStatusCode)
             {
                 var body = await delete.Content.ReadAsStringAsync();
