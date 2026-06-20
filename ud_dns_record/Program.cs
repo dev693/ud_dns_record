@@ -20,15 +20,15 @@ Log.Logger = new LoggerConfiguration()
 try
 {
     // --- argument parsing -------------------------------------------------
-    string Arg(string name) => args.SkipWhile(a => a != name).Skip(1).Take(1).FirstOrDefault() ?? string.Empty;
+    Func<string, string> Arg = name => args.SkipWhile(a => a != name).Skip(1).Take(1).FirstOrDefault() ?? string.Empty;
 
     // credentials: command-line argument takes precedence, otherwise fall back to the
     // environment variable so secrets can be kept out of the win_acme command line.
-    string Secret(string argName, string envName)
+    Func<string, string, string> Secret = (argName, envName) =>
     {
         var fromArg = Arg(argName);
         return !string.IsNullOrEmpty(fromArg) ? fromArg : (Environment.GetEnvironmentVariable(envName) ?? string.Empty);
-    }
+    };
 
     // mode/record/value can be supplied either as named flags (-mode/-record/-value) or as
     // win-acme's *default* positional DNS script parameters:
