@@ -20,16 +20,6 @@ Log.Logger = new LoggerConfiguration()
 try
 {
     // --- argument parsing -------------------------------------------------
-    Func<string, string> Arg = name => args.SkipWhile(a => a != name).Skip(1).Take(1).FirstOrDefault() ?? string.Empty;
-
-    // credentials: command-line argument takes precedence, otherwise fall back to the
-    // environment variable so secrets can be kept out of the win_acme command line.
-    Func<string, string, string> Secret = (argName, envName) =>
-    {
-        var fromArg = Arg(argName);
-        return !string.IsNullOrEmpty(fromArg) ? fromArg : (Environment.GetEnvironmentVariable(envName) ?? string.Empty);
-    };
-
     // mode/record/value can be supplied either as named flags (-mode/-record/-value) or as
     // win-acme's *default* positional DNS script parameters:
     //   create {Identifier} {RecordName} {Token}   (likewise: delete {Identifier} {RecordName} {Token})
@@ -45,17 +35,22 @@ try
     }
     else
     {
-        mode = Arg("-mode");
-        record = Arg("-record");
-        value = Arg("-value");
+        mode = args.SkipWhile(a => a != "-mode").Skip(1).FirstOrDefault() ?? string.Empty;
+        record = args.SkipWhile(a => a != "-record").Skip(1).FirstOrDefault() ?? string.Empty;
+        value = args.SkipWhile(a => a != "-value").Skip(1).FirstOrDefault() ?? string.Empty;
     }
 
     mode = mode.Trim().ToLowerInvariant();
     record = record.Trim().Trim('.').ToLowerInvariant();
 
-    var mail = Secret("-mail", "UD_MAIL");
-    var password = Secret("-pw", "UD_PASSWORD");
-    var tfa = Secret("-tfa", "UD_TFA");
+    // credentials: command-line argument takes precedence, otherwise fall back to the
+    // environment variable so secrets can be kept out of the win_acme command line.
+    var mail = args.SkipWhile(a => a != "-mail").Skip(1).FirstOrDefault()
+        ?? Environment.GetEnvironmentVariable("UD_MAIL") ?? string.Empty;
+    var password = args.SkipWhile(a => a != "-pw").Skip(1).FirstOrDefault()
+        ?? Environment.GetEnvironmentVariable("UD_PASSWORD") ?? string.Empty;
+    var tfa = args.SkipWhile(a => a != "-tfa").Skip(1).FirstOrDefault()
+        ?? Environment.GetEnvironmentVariable("UD_TFA") ?? string.Empty;
 
     // collect every missing/invalid argument so the log says exactly what is wrong
     var missing = new List<string>();
