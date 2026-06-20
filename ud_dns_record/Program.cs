@@ -30,20 +30,52 @@ try
         return !string.IsNullOrEmpty(fromArg) ? fromArg : (Environment.GetEnvironmentVariable(envName) ?? string.Empty);
     }
 
-    var mode = Arg("-mode").Trim().ToLowerInvariant();
+    // mode/record/value can be supplied either as named flags (-mode/-record/-value) or as
+    // win-acme's *default* positional DNS script parameters:
+    //   create {Identifier} {RecordName} {Token}   (likewise: delete {Identifier} {RecordName} {Token})
+    // Positional form is assumed when the first argument is not a "-name" flag.
+    string mode, record, value;
+    if (args.Length > 0 && !args[0].StartsWith('-'))
+    {
+        mode = args.ElementAtOrDefault(0) ?? string.Empty;   // create | delete
+        // args[1] is {Identifier} (the zone/registered name) and is not needed here -
+        // the registered domain is derived from the record name further down.
+        record = args.ElementAtOrDefault(2) ?? string.Empty; // {RecordName}
+        value = args.ElementAtOrDefault(3) ?? string.Empty;  // {Token}
+    }
+    else
+    {
+        mode = Arg("-mode");
+        record = Arg("-record");
+        value = Arg("-value");
+    }
+
+    mode = mode.Trim().ToLowerInvariant();
+    record = record.Trim().Trim('.').ToLowerInvariant();
+
     var mail = Secret("-mail", "UD_MAIL");
     var password = Secret("-pw", "UD_PASSWORD");
     var tfa = Secret("-tfa", "UD_TFA");
-    var record = Arg("-record").Trim().Trim('.').ToLowerInvariant();
-    var value = Arg("-value");
 
-    if (mode is not ("create" or "delete") || string.IsNullOrEmpty(mail) || string.IsNullOrEmpty(password) || string.IsNullOrEmpty(record))
-        throw new ArgumentException(
-            "Usage: -mode <create|delete> [-mail <mail>] [-pw <password>] -record <_acme-challenge.example.com> [-value <txt-value>] [-tfa <secret>]\n" +
-            "  mail/password/2FA may also be supplied via the UD_MAIL, UD_PASSWORD and UD_TFA environment variables.");
-
+    // collect every missing/invalid argument so the log says exactly what is wrong
+    var missing = new List<string>();
+    if (mode is not ("create" or "delete"))
+        missing.Add("mode (expected 'create' or 'delete' as -mode or the first positional argument)");
+    if (string.IsNullOrEmpty(mail))
+        missing.Add("mail (-mail or the UD_MAIL environment variable)");
+    if (string.IsNullOrEmpty(password))
+        missing.Add("password (-pw or the UD_PASSWORD environment variable)");
+    if (string.IsNullOrEmpty(record))
+        missing.Add("record (-record or the {RecordName} positional argument)");
     if (mode == "create" && string.IsNullOrEmpty(value))
-        throw new ArgumentException("-value is required when -mode create");
+        missing.Add("value (-value or the {Token} positional argument; required for create)");
+
+    if (missing.Count > 0)
+        throw new ArgumentException(
+            "Missing or invalid argument(s): " + string.Join("; ", missing) + "\n" +
+            "Usage (named):      -mode <create|delete> [-mail <mail>] [-pw <password>] -record <_acme-challenge.example.com> [-value <txt-value>] [-tfa <secret>]\n" +
+            "Usage (positional): <create|delete> {Identifier} <_acme-challenge.example.com> [<txt-value>]   (win-acme default)\n" +
+            "mail/password/2FA may also be supplied via the UD_MAIL, UD_PASSWORD and UD_TFA environment variables.");
 
     // --- login ------------------------------------------------------------
     var cookieContainer = new CookieContainer();

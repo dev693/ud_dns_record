@@ -18,6 +18,20 @@ ud_dns_record.exe -mode create -mail <mail> -pw <password> [-tfa <secret>] -reco
 ud_dns_record.exe -mode delete -mail <mail> -pw <password> [-tfa <secret>] -record <_acme-challenge.example.com> [-value <txt-value>]
 ```
 
+Alternatively the tool accepts **win-acme's default positional parameters**
+(`create {Identifier} {RecordName} {Token}` / `delete {Identifier} {RecordName} {Token}`),
+so it works without customising the script arguments at all — credentials then come from the
+environment variables:
+
+```
+ud_dns_record.exe create <identifier> <_acme-challenge.example.com> <txt-value>
+ud_dns_record.exe delete <identifier> <_acme-challenge.example.com> [<txt-value>]
+```
+
+The positional form is detected when the first argument is not a `-flag`. The `{Identifier}`
+value is accepted but ignored — the registered domain is derived from the record name. If a
+required argument is missing the tool logs **exactly which one**.
+
 | Argument  | Required            | Description                                                              |
 |-----------|---------------------|--------------------------------------------------------------------------|
 | `-mode`   | yes                 | `create` or `delete`.                                                     |
