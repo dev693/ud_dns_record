@@ -140,10 +140,12 @@ try
     var domain_list = JObject.Parse(await domain_list_response.Content.ReadAsStringAsync());
 
     // longest-suffix match: pick the registered domain that is the longest suffix of the record name
+    var names = new List<string>();
     JToken? matched = null;
     foreach (var entry in domain_list["data"]!)
     {
         var name = entry!["name"]!.ToString().ToLowerInvariant();
+        names.Add(name);
         if (record == name || record.EndsWith("." + name))
         {
             if (matched is null || name.Length > matched["name"]!.ToString().Length)
@@ -152,7 +154,9 @@ try
     }
 
     if (matched is null)
-        throw new InvalidOperationException($"no registered united-domains domain found for record {record}");
+        throw new InvalidOperationException(
+            $"no registered united-domains domain found for record {record}. " +
+            $"Account holds {names.Count} domain(s): {string.Join(", ", names)}");
 
     var registered_domain = matched["name"]!.ToString().ToLowerInvariant();
     var domain_id = matched["id"]!.ToString();
